@@ -4,6 +4,7 @@ import dns.resolver
 import dns.message
 import dns.query
 import dns.exception
+import re
 from rich.console import Console
 from rich.table import Table
 from rich import box
@@ -31,6 +32,11 @@ ALL_RECORD_TYPES = [
     "A", "AAAA", "MX", "NS", "TXT",
     "CNAME", "SOA", "SRV", "CAA", "PTR"
 ]
+
+# Regex pour le parsing des TXT
+IPV4_REGEX = r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b"
+IPV6_REGEX = r"\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b"
+DOMAIN_REGEX = r"\b([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b"
 
 
 def pretty_banner(title: str):
@@ -93,6 +99,68 @@ def iterative_resolution(domain: str):
     console.print("[red]Impossible de continuer la résolution itérative (simplifiée).[/red]")
 
 
+def parse_txt_generic(txt: str):
+    """Parse générique pour trouver IP et domaines."""
+    ipv4 = re.findall(IPV4_REGEX, txt)
+    ipv6 = re.findall(IPV6_REGEX, txt)
+    domains = re.findall(DOMAIN_REGEX, txt)
+
+    return {
+        "ipv4": set(ipv4),
+        "ipv6": set(ipv6),
+        "domains": set(domains)
+    }
+
+
+def parse_spf(txt: str):
+    """Parse spécialisé SPF."""
+    ips = []
+    domains = []
+
+    parts = txt.split()
+
+    for part in parts:
+        if part.startswith("ip4:") or part.startswith("ip6:"):
+            ips.append(part.split(":", 1)[1])
+        elif part.startswith("include:"):
+            domains.append(part.split(":", 1)[1])
+
+    return {
+        "ips": ips,
+        "domains": domains
+    }
+
+
+def parse_dmarc(txt: str):
+    """Parse spécialisé DMARC."""
+    domains = []
+
+    fields = txt.split(";")
+    for field in fields:
+        field = field.strip()
+        if field.startswith("rua=") or field.startswith("ruf="):
+            value = field.split("=", 1)[1]
+            domains.extend(re.findall(DOMAIN_REGEX, value))
+
+    return {
+        "domains": domains
+    }
+
+
+def parse_txt_record(txt: str):
+    """Choisit le bon parseur TXT."""
+    txt = txt.strip('"')
+    txt_lower = txt.lower()
+
+    if txt_lower.startswith("v=spf1"):
+        return ("SPF", parse_spf(txt))
+
+    if txt_lower.startswith("v=dmarc1"):
+        return ("DMARC", parse_dmarc(txt))
+
+    return ("GENERIC", parse_txt_generic(txt))
+
+
 def display_results(domain: str, record_type: str, answers):
     """Affiche les résultats DNS sous forme de tableau."""
     pretty_banner(f"Résultats : {domain} ({record_type})")
@@ -107,7 +175,16 @@ def display_results(domain: str, record_type: str, answers):
         return
 
     for r in answers:
-        table.add_row(record_type, r.to_text())
+        if record_type == "TXT":
+           parsed_type, parsed_data = parse_txt_record(r.to_text())
+
+           table.add_row(
+               f"TXT ({parsed_type})",
+               f"{r.to_text()}\n→ Parsed: {parsed_data}"
+            )
+
+        else:
+           table.add_row(record_type, r.to_text())
 
     console.print(table)
 
@@ -120,9 +197,6 @@ def resolve_all_records(domain: str):
         console.print(f"[cyan]→ Résolution {rtype}[/cyan]")
         answers = resolve_record(domain, rtype)
         display_results(domain, rtype, answers)
-
-def revers
-
 
 def main():
     if len(sys.argv) < 2:
@@ -157,6 +231,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    def test
-        assert
