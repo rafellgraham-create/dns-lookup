@@ -161,6 +161,39 @@ def parse_txt_record(txt: str):
     return ("GENERIC", parse_txt_generic(txt))
 
 
+def format_parsed_txt(parsed_type: str, parsed_data: dict) -> str:
+    """Formate proprement les résultats TXT pour l'affichage."""
+    lines = []
+
+    if parsed_type != "GENERIC":
+        lines.append(f"[bold]{parsed_type}[/bold]")
+
+    if "ips" in parsed_data and parsed_data["ips"]:
+        lines.append("IPs :")
+        for ip in parsed_data["ips"]:
+            lines.append(f"  • {ip}")
+
+    if "ipv4" in parsed_data and parsed_data["ipv4"]:
+        lines.append("IPv4 :")
+        for ip in parsed_data["ipv4"]:
+            lines.append(f"  • {ip}")
+
+    if "ipv6" in parsed_data and parsed_data["ipv6"]:
+        lines.append("IPv6 :")
+        for ip in parsed_data["ipv6"]:
+            lines.append(f"  • {ip}")
+
+    if "domains" in parsed_data and parsed_data["domains"]:
+        lines.append("Domains :")
+        for domain in parsed_data["domains"]:
+            lines.append(f"  • {domain}")
+
+    if not lines:
+        return "No relevant data found"
+
+    return "\n".join(lines)
+
+
 def display_results(domain: str, record_type: str, answers):
     """Affiche les résultats DNS sous forme de tableau."""
     pretty_banner(f"Résultats : {domain} ({record_type})")
@@ -178,10 +211,12 @@ def display_results(domain: str, record_type: str, answers):
         if record_type == "TXT":
            parsed_type, parsed_data = parse_txt_record(r.to_text())
 
+           formatted = format_parsed_txt(parsed_type, parsed_data)
+
            table.add_row(
                f"TXT ({parsed_type})",
-               f"{r.to_text()}\n→ Parsed: {parsed_data}"
-            )
+               f"{r.to_text()}\n\n{formatted}"
+           )
 
         else:
            table.add_row(record_type, r.to_text())
