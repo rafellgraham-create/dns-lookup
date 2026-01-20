@@ -5,6 +5,7 @@ import dns.message
 import dns.query
 import dns.exception
 import re
+import requests
 from rich.console import Console
 from rich.table import Table
 from rich import box
@@ -38,7 +39,7 @@ IPV4_REGEX = r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b"
 IPV6_REGEX = r"\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b"
 DOMAIN_REGEX = r"\b([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b"
 
-TLD_LIST = [
+STATIC_TLD_LIST = [
     "fr",
     "gouv.fr",
     "com",
@@ -47,6 +48,9 @@ TLD_LIST = [
     "info",
     "biz"
 ]
+
+#Public Suffix List pour mise à jour dynamique
+PSL_URL = "https://publicsuffix.org/list/public_suffix_list.dat"
 
 
 def pretty_banner(title: str):
@@ -258,6 +262,21 @@ def display_parent_domains(domain: str, parents: list, tld: str):
     console.print(table)
 
 
+def fetch_psl() -> list:
+    """Télécharge et parse la public suffix list."""
+    response = requests.get(PSL_URL, timeout=5)
+    response.raise_for_status()
+
+    tlds = []
+    for line in response.text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("//"):
+            continue
+        tlds.append(line.lower())
+
+    return tlds
+
+
 def display_results(domain: str, record_type: str, answers):
     """Affiche les résultats DNS sous forme de tableau."""
     pretty_banner(f"Résultats : {domain} ({record_type})")
@@ -326,6 +345,14 @@ def main():
 
     # Démonstration itérative
     iterative_resolution(domain)
+
+    # Chargement de la liste des TLD
+    try:
+        TLD_LIST = fetch_psl()
+        console.print("[green]Public Suffix List trouvée.[/green]")
+    except Exception:
+        console.print("[yellow]Impossible de trouver la PSL, utilisation de la liste statique.[/yellow]")
+        TLD_LIST = STATIC_TLD_LIST
 
     #Crawl vers le TLD
     tld = find_matching_tld(domain, TLD_LIST)
